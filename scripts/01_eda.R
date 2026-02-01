@@ -137,7 +137,7 @@ ggsave(file.path(path_output, "08_suavizado_ma.png"), p5, width = 10, height = 6
 
 
 # ==============================================================================
-# 7. Sincronización Automática con GitHub
+# Sincronización Automática con GitHub
 # ==============================================================================
 
 # Cambiar el directorio de trabajo a la raíz del proyecto para que Git funcione
@@ -149,9 +149,11 @@ setwd(path_base)
 # 2. Preparar el mensaje del commit
 # Usamos shQuote para que los espacios y caracteres especiales no rompan el comando
 fecha_ejecucion <- format(Sys.time(), "%Y-%m-%d %H:%M:%S")
-mensaje_texto <- paste0("feat(eda): ", fecha_ejecucion, " | capturar y persistir diagnósticos de estacionariedad.\n - Implementación de renderizado dual para ggtsdisplay (consola + PNG).
-- Adición de serie diferenciada (d=1) al pipeline de salida automática.
-- Incremento de resolución en gráficos de diagnóstico para mejor identificación de rezagos.")
+mensaje_texto <- paste0("refactor(eda): ", fecha_ejecucion, " | optimizar pipeline de visualización y diagnóstico estadístico.\n - Se añade parámetro .groups='drop' en agregaciones para evitar fugas de memoria.
+- Estandarización de resolución (120 dpi) y dimensiones en exportación de PNG.
+- Implementación de media móvil (k=5) para análisis de tendencia.
+- Mejora en la nomenclatura de títulos de gráficos para trazabilidad con archivos de salida.
+- Limpieza de lógica de Git interna para favorecer ejecución modular.")
 comando_commit <- paste0('git commit -m ', shQuote(mensaje_texto))
 
 # 3. Ejecutar Pipeline de Git

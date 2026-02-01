@@ -14,19 +14,23 @@ Este proyecto aplica modelos de pronóstico avanzados (ARIMA/VAR) sobre datos de
 3. **Estimación**: Comparación de modelos mediante criterios AIC/BIC.
 4. **Validación**: Test de Ljung-Box para independencia de residuos y Shapiro-Wilk para normalidad.
 
-He actualizado la sección de Resultados de Diagnóstico para incluir la comparación de granularidad.
+## Análisis Exploratorio de Datos (EDA)
 
-Secciones modificadas:
+Se ha implementado un pipeline de procesamiento de logs con los siguientes componentes:
 
-Visualización de Diagnóstico: Se añadieron los hipervínculos a los nuevos gráficos de ACF/PACF.
+### 1. Visualización de Series Temporales
+* **Multiescala:** Análisis de tráfico por segundo, minuto y hora para identificar patrones de ráfagas.
+* **Suavizado (Moving Average):** Se incorporó una media móvil ($k=5$) para filtrar el ruido blanco y visualizar la tendencia subyacente.
 
-Análisis Estadístico: Se incluyó la tabla comparativa de las pruebas ADF y KPSS para segundos y minutos.
+### 2. Diagnóstico Estadístico
+Se generan diagnósticos automáticos de estacionariedad en la carpeta `/output`:
+* **ACF/PACF:** Evaluación de autocorrelación para la selección de órdenes en modelos ARMA/ARIMA.
+* **Pruebas de Raíz Unitaria:** Resultados de los tests ADF y KPSS exportados en `test_estacionariedad.txt`.
 
-### Diagnóstico Temporal
-Se realizaron análisis en dos niveles de agregación para capturar dinámicas de red distintas:
-
-* **Granularidad por Segundo:** [Ver Gráfico](https://github.com/iviterirambay/AplicacionTecnicas/blob/main/output/04_diagnostico_seg_acf_pacf.png)
-* **Granularidad por Minuto:** [Ver Gráfico](https://github.com/iviterirambay/AplicacionTecnicas/blob/main/output/05_diagnostico_min__acf_pacf.png)
-
-**Conclusión:** La serie presenta contradicción entre ADF y KPSS, sugiriendo la necesidad de aplicar una diferencia de primer orden antes de proceder con modelos ARIMA.
-
+###  Galería de Resultados
+| Descripción | Visualización |
+| :--- | :--- |
+| **Tráfico por Segundo** | ![Serie Segundo](output/01_serie_segundo.png) |
+| **Tráfico por Minuto** | ![Serie Minuto](output/02_serie_minuto.png) |
+| **Análisis ACF/PACF** | ![Diagnóstico](output/04_diagnostico_seg_acf_pacf.png) |
+| **Diferenciación (d=1)** | ![Diff](output/06_diagnostico_diff_min.png) |
