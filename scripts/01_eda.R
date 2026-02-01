@@ -74,11 +74,11 @@ p3 <- ggplot(df_hora, aes(x = hora, y = peticiones)) +
   theme_minimal()
 
 print(p3) # Muestra en R
-ggsave(file.path(path_output, "02b_serie_hora.png"), p3)
+ggsave(file.path(path_output, "03_serie_hora.png"), p3)
 
 # D. Diagnóstico ACF/PACF
 ggtsdisplay(traffic_ts, main = "Diagnóstico Temporal")
-png(file.path(path_output, "03_diagnostico_acf_pacf.png"), width = 1000, height = 800)
+png(file.path(path_output, "04_diagnostico_acf_pacf.png"), width = 1000, height = 800)
 ggtsdisplay(traffic_ts, main = "Diagnóstico Temporal: Serie, ACF y PACF")
 dev.off()
 
@@ -87,7 +87,7 @@ p4 <- ggplot(df_ts, aes(y = peticiones)) +
   geom_boxplot(fill = "orange", alpha = 0.5) + coord_flip() +
   labs(title = "Outliers Detectados") + theme_minimal()
 print(p4) # Muestra en R
-ggsave(file.path(path_output, "04_boxplot.png"), p4)
+ggsave(file.path(path_output, "05_boxplot.png"), p4)
 
 # --- [5] Pruebas Estadísticas ---
 test_results <- list(
