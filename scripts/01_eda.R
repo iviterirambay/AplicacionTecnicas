@@ -3,89 +3,97 @@
 # PROYECTO: Análisis de Logs de Red
 # ==============================================================================
 
-# --- [0] Librerias ---
-library(readr)
-library(dplyr)
-library(lubridate)
 
-
-# 1. Definición de Rutas Globales
-# > [!NOTE] Actualizado a la nueva ubicación del archivo comprimido .log.gz
-path_base    <- "C:/Users/iavit/OneDrive/ESPOL/Maestria en Estadistica Aplicada/Clases Maestria en Estadistica Aplicada/Modulo 8/MODELOS DE PRONOSTICO/Tareas/Grupal/AplicacionTecnicas/"
-path_data    <- paste0(path_base, "data/files.log.gz")
-path_output  <- paste0(path_base, "output/")
-path_scripts <- paste0(path_base, "scripts/")
-
-# 2. Gestión de Librerías
+# --- [1] Librerias ---
 if (!require("pacman")) install.packages("pacman")
-pacman::p_load(tidyverse, lubridate, forecast, tseries, astsa, openxlsx)
+pacman::p_load(tidyverse, lubridate, forecast, tseries, astsa, ggplot2, readr)
 
-# 3. Ingesta y Limpieza de Logs
-# Nota: read_table detecta automáticamente la compresión .gz
-col_names <- c(
-  "timestamp", "fuid", "id_orig_h", "id_resp_h", "conn_uids", 
-  "source", "depth", "analyzers", "mime_type", "filename", 
-  "duration", "local_orig", "is_orig", "seen_bytes", "total_bytes", 
-  "missing_bytes", "overflow_bytes", "timedout", "parent_fuid", 
-  "md5", "sha1", "sha256", "extracted"
-)
+# --- [2] Configuración de Entorno ---
+path_base    <- "C:/Users/iavit/OneDrive/ESPOL/Maestria en Estadistica Aplicada/Clases Maestria en Estadistica Aplicada/Modulo 8/MODELOS DE PRONOSTICO/Tareas/Grupal/AplicacionTecnicas/"
+path_data    <- file.path(path_base, "data/files.log.gz")
+path_output  <- file.path(path_base, "output")
+dir.create(path_output, showWarnings = FALSE)
 
+# --- [3] Ingesta y Limpieza ---
+col_names <- c("timestamp", "fuid", "id_orig_h", "id_resp_h", "conn_uids", "source", 
+               "depth", "analyzers", "mime_type", "filename", "duration", 
+               "local_orig", "is_orig", "seen_bytes", "total_bytes", "missing_bytes", 
+               "overflow_bytes", "timedout", "parent_fuid", "md5", "sha1", "sha256", "extracted")
 
-raw_data <- read_delim(
-  path_data, 
-  delim = "\t", 
-  col_names = col_names,
-  na = "-", 
-  quote = "", # Importante: evita errores con caracteres especiales en nombres de archivos
-  show_col_types = FALSE
-) %>%
-  # Seleccion para el analisis temporal
+raw_data <- read_delim(path_data, delim = "\t", col_names = col_names, na = "-", quote = "", show_col_types = FALSE) %>%
   select(timestamp, id_orig_h, id_resp_h, source, mime_type)
 
-
-# Transformación temporal: De Unix Epoch a Objetos de Tiempo
 df_clean <- raw_data %>%
-  # 1. Convertir timestamp con precisión decimal
-  mutate(timestamp = as.numeric(timestamp)) %>%
-  # 2. Transformar a objeto de tiempo real (POSIXct)
-  mutate(fecha_hora = as.POSIXct(timestamp, origin = "1970-01-01", tz = "UTC")) %>%
-  # 3. Eliminar posibles NAs en el tiempo que rompan la serie
+  mutate(timestamp = as.numeric(timestamp),
+         fecha_hora = as.POSIXct(timestamp, origin = "1970-01-01", tz = "UTC")) %>%
   filter(!is.na(fecha_hora))
 
-# 3. Preparación para la Serie Temporal (Peticiones por segundo)
 df_ts <- df_clean %>%
   mutate(segundo = floor_date(fecha_hora, "second")) %>%
   count(segundo, name = "peticiones") %>%
-  # Asegurar que los segundos sin actividad tengan valor 0
-  complete(segundo = seq(min(segundo), max(segundo), by = "1 sec"), 
-           fill = list(peticiones = 0))
+  complete(segundo = seq(min(segundo), max(segundo), by = "1 sec"), fill = list(peticiones = 0))
 
-# Crear el objeto TS
 traffic_ts <- ts(df_ts$peticiones, frequency = 1)
 
-# 4. Verificación de Supuestos (Estacionariedad)
-sink(paste0(path_output, "test_resultados_eda.txt"))
-print("--- PRUEBA DE DICKEY-FULLER AUMENTADA (ADF) ---")
-# H0: La serie tiene raíz unitaria (no es estacionaria)
-print(adf.test(traffic_ts, alternative = "stationary"))
 
-print("--- TEST KPSS ---")
-# H0: La serie es estacionaria
-print(kpss.test(traffic_ts, null = "Level"))
+# --- [4] Visualización y Guardado Automático ---
+
+# A. Serie por Segundo
+p1 <- autoplot(traffic_ts) + 
+  labs(title = "Tráfico por Segundo", subtitle = "Serie Original", y = "Peticiones", x = "Tiempo") +
+  theme_minimal()
+print(p1) # Muestra en R
+ggsave(file.path(path_output, "01_serie_segundo.png"), p1)
+
+# B. Serie por Minuto
+df_minuto <- df_ts %>%
+  mutate(minuto = floor_date(segundo, "minute")) %>%
+  group_by(minuto) %>%
+  summarise(peticiones = sum(peticiones))
+
+p2 <- ggplot(df_minuto, aes(x = minuto, y = peticiones)) +
+  geom_line(color = "#2c3e50") +
+  labs(title = "Tráfico por Minuto", x = "Tiempo", y = "Total") +
+  theme_light()
+print(p2) # Muestra en R
+ggsave(file.path(path_output, "02_serie_minuto.png"), p2)
+
+# C. Diagnóstico ACF/PACF
+ggtsdisplay(traffic_ts, main = "Diagnóstico Temporal")
+png(file.path(path_output, "03_diagnostico_acf_pacf.png"), width = 1000, height = 800)
+ggtsdisplay(traffic_ts, main = "Diagnóstico Temporal: Serie, ACF y PACF")
+dev.off()
+
+# D. Boxplot Outliers
+p3 <- ggplot(df_ts, aes(y = peticiones)) +
+  geom_boxplot(fill = "orange", alpha = 0.5) + coord_flip() +
+  labs(title = "Outliers Detectados") + theme_minimal()
+print(p3) # Muestra en R
+ggsave(file.path(path_output, "04_boxplot.png"), p3)
+
+# --- [5] Pruebas Estadísticas ---
+test_results <- list(
+  adf = tseries::adf.test(traffic_ts),
+  kpss = tseries::kpss.test(traffic_ts)
+)
+
+# Mostrar en consola de R explícitamente
+print(test_results$adf)
+print(test_results$kpss)
+
+# Guardar en archivo TXT
+sink(file.path(path_output, "test_estacionariedad.txt"))
+print(test_results)
 sink()
+
+
+
+
 
 # 5. Análisis de Medias Móviles (Suavización k=5)
 v_ma <- stats::filter(traffic_ts, sides = 1, rep(1/5, 5))
 
-# 6. Exportación de Visualizaciones
-png(paste0(path_output, "EDA_Grafico_Peticiones.png"), width = 1200, height = 800)
-par(mfrow=c(2,1))
-plot(traffic_ts, main="Serie Original: Peticiones por Segundo", col="darkblue", ylab="Frecuencia")
-plot(v_ma, main="Suavizado Medias Móviles (k=5)", col="darkred", lwd=2)
-dev.off()
 
-print(paste("Proceso EDA completado con éxito. Datos leídos desde .log.gz"))
-print(paste("Archivos guardados en:", path_output))
 
 
 # ==============================================================================
@@ -101,7 +109,9 @@ setwd(path_base)
 # 2. Preparar el mensaje del commit
 # Usamos shQuote para que los espacios y caracteres especiales no rompan el comando
 fecha_ejecucion <- format(Sys.time(), "%Y-%m-%d %H:%M:%S")
-mensaje_texto <- paste0("Auto-update DATOS: ", fecha_ejecucion, " | Corrección de formato y truncamiento de datos")
+mensaje_texto <- paste0("feat(eda): ", fecha_ejecucion, " | Asegurar salida dual para gráficos y estadísticas.\n - Se actualizó el script para renderizar gráficos en el panel de RStudio y guardarlos en /output simultáneamente.
+- Implementación de llamadas explícitas print() para objetos ggplot y pruebas estadísticas.
+- Corrección de la supresión de dev.off() para permitir visibilidad de ACF/PACF en consola.")
 comando_commit <- paste0('git commit -m ', shQuote(mensaje_texto))
 
 # 3. Ejecutar Pipeline de Git
