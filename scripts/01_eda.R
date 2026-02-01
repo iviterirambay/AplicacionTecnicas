@@ -94,10 +94,10 @@ dev.off()
 
 # Objetos de Series Temporales
 traffic_diff_min   <- diff(traffic_min_ts) # Diferenciación sugerida para estacionariedad
-ggtsdisplay(traffic_diff_min, 
-            main = "Serie por Minuto con Diferenciación (d=1)",
-            theme = theme_minimal())
+ggtsdisplay(traffic_diff_min, main = "Serie por Minuto con Diferenciación (d=1)")
 png(file.path(path_output, "06_diagnostico_diff_min.png"), width = 1000, height = 800)
+ggtsdisplay(traffic_diff_min, main = "Serie por Minuto con Diferenciación (d=1)")
+dev.off()
 
 # F. Boxplot Outliers
 p4 <- ggplot(df_ts, aes(y = peticiones)) +
