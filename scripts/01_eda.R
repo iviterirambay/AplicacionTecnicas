@@ -58,18 +58,36 @@ p2 <- ggplot(df_minuto, aes(x = minuto, y = peticiones)) +
 print(p2) # Muestra en R
 ggsave(file.path(path_output, "02_serie_minuto.png"), p2)
 
-# C. Diagnóstico ACF/PACF
+# C. Serie por Hora
+df_hora <- df_ts %>%
+  mutate(hora = floor_date(segundo, "hour")) %>%
+  group_by(hora) %>%
+  summarise(peticiones = sum(peticiones))
+
+p3 <- ggplot(df_hora, aes(x = hora, y = peticiones)) +
+  geom_line(color = "#e67e22", size = 1) +  # Color naranja para diferenciar
+  geom_point(color = "#d35400") +           # Puntos para resaltar los picos horarios
+  labs(title = "Tráfico Agregado por Hora", 
+       subtitle = paste("Desde", min(df_hora$hora), "hasta", max(df_hora$hora)),
+       x = "Tiempo (Horas)", 
+       y = "Total de Peticiones") +
+  theme_minimal()
+
+print(p3) # Muestra en R
+ggsave(file.path(path_output, "02b_serie_hora.png"), p3)
+
+# D. Diagnóstico ACF/PACF
 ggtsdisplay(traffic_ts, main = "Diagnóstico Temporal")
 png(file.path(path_output, "03_diagnostico_acf_pacf.png"), width = 1000, height = 800)
 ggtsdisplay(traffic_ts, main = "Diagnóstico Temporal: Serie, ACF y PACF")
 dev.off()
 
-# D. Boxplot Outliers
-p3 <- ggplot(df_ts, aes(y = peticiones)) +
+# F. Boxplot Outliers
+p4 <- ggplot(df_ts, aes(y = peticiones)) +
   geom_boxplot(fill = "orange", alpha = 0.5) + coord_flip() +
   labs(title = "Outliers Detectados") + theme_minimal()
-print(p3) # Muestra en R
-ggsave(file.path(path_output, "04_boxplot.png"), p3)
+print(p4) # Muestra en R
+ggsave(file.path(path_output, "04_boxplot.png"), p4)
 
 # --- [5] Pruebas Estadísticas ---
 test_results <- list(
@@ -92,8 +110,6 @@ sink()
 
 # 5. Análisis de Medias Móviles (Suavización k=5)
 v_ma <- stats::filter(traffic_ts, sides = 1, rep(1/5, 5))
-
-
 
 
 # ==============================================================================
