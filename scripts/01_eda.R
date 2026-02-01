@@ -66,3 +66,34 @@ dev.off()
 
 print(paste("Proceso EDA completado con éxito. Datos leídos desde .log.gz"))
 print(paste("Archivos guardados en:", path_output))
+
+
+# ==============================================================================
+# 7. Sincronización Automática con GitHub
+# ==============================================================================
+
+# Cambiar el directorio de trabajo a la raíz del proyecto para que Git funcione
+nombre_repo <- "AplicacionTecnicas" 
+nombre_user <- "iviterirambay"
+remote_url <- paste0("https://github.com/", nombre_user, "/", nombre_repo, ".git")
+
+setwd(path_base)
+
+# Ejecutar comandos de Git
+# 1. Añadir todos los cambios (incluyendo nuevos datos, outputs y scripts)
+system("git add .")
+
+# 2. Crear el commit con una marca de tiempo para identificar la ejecución
+message_commit <- paste("Auto-update:", Sys.time())
+try(system(paste0("git commit -m ",message_commit, 'Conversion de datos y analisis exploratorio', remote_url)), silent = TRUE)
+
+# 3. Empujar los cambios a la rama principal (usualmente 'main' o 'master')
+# Nota: Asegúrate de que tu rama se llame 'main'
+system("git push origin main")
+
+print("Sincronización con GitHub finalizada.")
+
+
+# ==============================================================================
+# FINAL DEL SCRIPT
+# ==============================================================================
