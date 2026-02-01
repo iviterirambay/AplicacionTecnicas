@@ -50,6 +50,8 @@ df_minuto <- df_ts %>%
   mutate(minuto = floor_date(segundo, "minute")) %>%
   group_by(minuto) %>%
   summarise(peticiones = sum(peticiones))
+# Crear el objeto ts con frecuencia de 60 (ciclo horario)
+traffic_min_ts <- ts(df_minuto$peticiones, frequency = 60)
 
 p2 <- ggplot(df_minuto, aes(x = minuto, y = peticiones)) +
   geom_line(color = "#2c3e50") +
@@ -77,9 +79,16 @@ print(p3) # Muestra en R
 ggsave(file.path(path_output, "03_serie_hora.png"), p3)
 
 # D. Diagnóstico ACF/PACF
-ggtsdisplay(traffic_ts, main = "Diagnóstico Temporal")
-png(file.path(path_output, "04_diagnostico_acf_pacf.png"), width = 1000, height = 800)
+# Segundo
+ggtsdisplay(traffic_ts, main = "Diagnóstico Temporal por segundo")
+png(file.path(path_output, "04_diagnostico_seg_acf_pacf.png"), width = 1000, height = 800)
 ggtsdisplay(traffic_ts, main = "Diagnóstico Temporal: Serie, ACF y PACF")
+dev.off()
+
+# Minuto
+ggtsdisplay(traffic_min_ts, main = "Diagnóstico Temporal por minuto")
+png(file.path(path_output, "05_diagnostico_min__acf_pacf.png"), width = 1000, height = 800)
+ggtsdisplay(traffic_min_ts, main = "Diagnóstico Temporal: Serie, ACF y PACF")
 dev.off()
 
 # F. Boxplot Outliers
@@ -87,24 +96,40 @@ p4 <- ggplot(df_ts, aes(y = peticiones)) +
   geom_boxplot(fill = "orange", alpha = 0.5) + coord_flip() +
   labs(title = "Outliers Detectados") + theme_minimal()
 print(p4) # Muestra en R
-ggsave(file.path(path_output, "05_boxplot.png"), p4)
+ggsave(file.path(path_output, "06_boxplot.png"), p4)
 
 # --- [5] Pruebas Estadísticas ---
-test_results <- list(
+# Segundo
+test_results_seg <- list(
   adf = tseries::adf.test(traffic_ts),
   kpss = tseries::kpss.test(traffic_ts)
 )
 
+# Minuto
+test_results_min <- list(
+  adf = tseries::adf.test(traffic_min_ts),
+  kpss = tseries::kpss.test(traffic_min_ts)
+)
+
 # Mostrar en consola de R explícitamente
-print(test_results$adf)
-print(test_results$kpss)
+# Segundo
+print(test_results_seg$adf)
+print(test_results_seg$kpss)
 
-# Guardar en archivo TXT
+# Segundo
+print(test_results_min$adf)
+print(test_results_min$kpss)
+
+# --- Guardar en archivo TXT ---
+# Creamos una lista maestra para guardar todo de una vez
+resultados_totales <- list(
+  segundos = test_results_seg,
+  minutos = test_results_min
+)
+
 sink(file.path(path_output, "test_estacionariedad.txt"))
-print(test_results)
+print(resultados_totales)
 sink()
-
-
 
 
 
@@ -125,9 +150,10 @@ setwd(path_base)
 # 2. Preparar el mensaje del commit
 # Usamos shQuote para que los espacios y caracteres especiales no rompan el comando
 fecha_ejecucion <- format(Sys.time(), "%Y-%m-%d %H:%M:%S")
-mensaje_texto <- paste0("feat(eda): ", fecha_ejecucion, " | Asegurar salida dual para gráficos y estadísticas.\n - Se actualizó el script para renderizar gráficos en el panel de RStudio y guardarlos en /output simultáneamente.
-- Implementación de llamadas explícitas print() para objetos ggplot y pruebas estadísticas.
-- Corrección de la supresión de dev.off() para permitir visibilidad de ACF/PACF en consola.")
+mensaje_texto <- paste0("feat(eda): ", fecha_ejecucion, " | agregar análisis de granularidad por minuto y diagnóstico dual.\n - Implementación de traffic_min_ts con frecuencia 60.
+- Adición de pruebas ADF y KPSS para datos agregados por minuto.
+- Refactorización de guardado de gráficos para asegurar salida en consola y disco.
+- Unificación de resultados estadísticos en un único reporte TXT.")
 comando_commit <- paste0('git commit -m ', shQuote(mensaje_texto))
 
 # 3. Ejecutar Pipeline de Git
