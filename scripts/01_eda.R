@@ -88,7 +88,7 @@ dev.off()
 
 # Minuto
 ggtsdisplay(traffic_min_ts, main = "Diagnóstico Temporal por minuto")
-png(file.path(path_output, "05_diagnostico_min__acf_pacf.png"), width = 1000, height = 800)
+png(file.path(path_output, "05_diagnostico_min_acf_pacf.png"), width = 1000, height = 800)
 ggtsdisplay(traffic_min_ts, main = "Diagnóstico Temporal: Serie, ACF y PACF")
 dev.off()
 
@@ -97,7 +97,7 @@ traffic_diff_min   <- diff(traffic_min_ts) # Diferenciación sugerida para estac
 ggtsdisplay(traffic_diff_min, 
             main = "Serie por Minuto con Diferenciación (d=1)",
             theme = theme_minimal())
-png(file.path(path_output, "06_diagnostico_diff_min.png"), width = 1200, height = 900, res = 120)
+png(file.path(path_output, "06_diagnostico_diff_min.png"), width = 1000, height = 800)
 
 # F. Boxplot Outliers
 p4 <- ggplot(df_ts, aes(y = peticiones)) +
