@@ -28,6 +28,7 @@ df_clean <- raw_data %>%
          fecha_hora = as.POSIXct(timestamp, origin = "1970-01-01", tz = "UTC")) %>%
   filter(!is.na(fecha_hora))
 
+# --- [4] Procesamiento de Series Temporales  ---
 df_ts <- df_clean %>%
   mutate(segundo = floor_date(fecha_hora, "second")) %>%
   count(segundo, name = "peticiones") %>%
@@ -91,12 +92,19 @@ png(file.path(path_output, "05_diagnostico_min__acf_pacf.png"), width = 1000, he
 ggtsdisplay(traffic_min_ts, main = "Diagnóstico Temporal: Serie, ACF y PACF")
 dev.off()
 
+# Objetos de Series Temporales
+traffic_diff_min   <- diff(traffic_min_ts) # Diferenciación sugerida para estacionariedad
+ggtsdisplay(traffic_diff_min, 
+            main = "Serie por Minuto con Diferenciación (d=1)",
+            theme = theme_minimal())
+png(file.path(path_output, "06_diagnostico_diff_min.png"), width = 1200, height = 900, res = 120)
+
 # F. Boxplot Outliers
 p4 <- ggplot(df_ts, aes(y = peticiones)) +
   geom_boxplot(fill = "orange", alpha = 0.5) + coord_flip() +
   labs(title = "Outliers Detectados") + theme_minimal()
 print(p4) # Muestra en R
-ggsave(file.path(path_output, "06_boxplot.png"), p4)
+ggsave(file.path(path_output, "07_boxplot.png"), p4)
 
 # --- [5] Pruebas Estadísticas ---
 # Segundo
@@ -150,10 +158,9 @@ setwd(path_base)
 # 2. Preparar el mensaje del commit
 # Usamos shQuote para que los espacios y caracteres especiales no rompan el comando
 fecha_ejecucion <- format(Sys.time(), "%Y-%m-%d %H:%M:%S")
-mensaje_texto <- paste0("feat(eda): ", fecha_ejecucion, " | agregar análisis de granularidad por minuto y diagnóstico dual.\n - Implementación de traffic_min_ts con frecuencia 60.
-- Adición de pruebas ADF y KPSS para datos agregados por minuto.
-- Refactorización de guardado de gráficos para asegurar salida en consola y disco.
-- Unificación de resultados estadísticos en un único reporte TXT.")
+mensaje_texto <- paste0("feat(eda): ", fecha_ejecucion, " | capturar y persistir diagnósticos de estacionariedad.\n - Implementación de renderizado dual para ggtsdisplay (consola + PNG).
+- Adición de serie diferenciada (d=1) al pipeline de salida automática.
+- Incremento de resolución en gráficos de diagnóstico para mejor identificación de rezagos.")
 comando_commit <- paste0('git commit -m ', shQuote(mensaje_texto))
 
 # 3. Ejecutar Pipeline de Git
