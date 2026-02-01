@@ -1,5 +1,9 @@
-$segundos
-$segundos$adf
+========================================
+PRUEBAS DE ESTACIONARIEDAD
+========================================
+
+$segundo
+$segundo$adf
 
 	Augmented Dickey-Fuller Test
 
@@ -8,7 +12,7 @@ Dickey-Fuller = -26.223, Lag order = 48, p-value = 0.01
 alternative hypothesis: stationary
 
 
-$segundos$kpss
+$segundo$kpss
 
 	KPSS Test for Level Stationarity
 
@@ -17,8 +21,8 @@ KPSS Level = 8.4941, Truncation lag parameter = 23, p-value = 0.01
 
 
 
-$minutos
-$minutos$adf
+$minuto
+$minuto$adf
 
 	Augmented Dickey-Fuller Test
 
@@ -27,7 +31,7 @@ Dickey-Fuller = -9.8543, Lag order = 12, p-value = 0.01
 alternative hypothesis: stationary
 
 
-$minutos$kpss
+$minuto$kpss
 
 	KPSS Test for Level Stationarity
 

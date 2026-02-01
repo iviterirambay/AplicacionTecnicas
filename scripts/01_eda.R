@@ -1,18 +1,19 @@
 # ==============================================================================
 # SCRIPT: 01_eda.R 
 # PROYECTO: Análisis de Logs de Red
+# DESCRIPCIÓN: Ingesta, limpieza y análisis exploratorio (EDA) de tráfico.
 # ==============================================================================
 
-
-# --- [1] Librerias ---
+# --- [1] Librerías ---
 if (!require("pacman")) install.packages("pacman")
-pacman::p_load(tidyverse, lubridate, forecast, tseries, astsa, ggplot2, readr)
+pacman::p_load(tidyverse, lubridate, forecast, tseries, astsa, scales)
 
 # --- [2] Configuración de Entorno ---
-path_base    <- "C:/Users/iavit/OneDrive/ESPOL/Maestria en Estadistica Aplicada/Clases Maestria en Estadistica Aplicada/Modulo 8/MODELOS DE PRONOSTICO/Tareas/Grupal/AplicacionTecnicas/"
-path_data    <- file.path(path_base, "data/files.log.gz")
-path_output  <- file.path(path_base, "output")
-dir.create(path_output, showWarnings = FALSE)
+path_base   <- "C:/Users/iavit/OneDrive/ESPOL/Maestria en Estadistica Aplicada/Clases Maestria en Estadistica Aplicada/Modulo 8/MODELOS DE PRONOSTICO/Tareas/Grupal/AplicacionTecnicas/"
+path_data   <- file.path(path_base, "data/files.log.gz")
+path_output <- file.path(path_base, "output")
+
+if (!dir.exists(path_output)) dir.create(path_output, recursive = TRUE)
 
 # --- [3] Ingesta y Limpieza ---
 col_names <- c("timestamp", "fuid", "id_orig_h", "id_resp_h", "conn_uids", "source", 
@@ -20,7 +21,8 @@ col_names <- c("timestamp", "fuid", "id_orig_h", "id_resp_h", "conn_uids", "sour
                "local_orig", "is_orig", "seen_bytes", "total_bytes", "missing_bytes", 
                "overflow_bytes", "timedout", "parent_fuid", "md5", "sha1", "sha256", "extracted")
 
-raw_data <- read_delim(path_data, delim = "\t", col_names = col_names, na = "-", quote = "", show_col_types = FALSE) %>%
+raw_data <- read_delim(path_data, delim = "\t", col_names = col_names, 
+                       na = "-", quote = "", show_col_types = FALSE) %>%
   select(timestamp, id_orig_h, id_resp_h, source, mime_type)
 
 df_clean <- raw_data %>%
@@ -28,121 +30,110 @@ df_clean <- raw_data %>%
          fecha_hora = as.POSIXct(timestamp, origin = "1970-01-01", tz = "UTC")) %>%
   filter(!is.na(fecha_hora))
 
-# --- [4] Procesamiento de Series Temporales  ---
+# --- [4] Procesamiento de Series Temporales ---
+
+# Agregación por Segundo
 df_ts <- df_clean %>%
   mutate(segundo = floor_date(fecha_hora, "second")) %>%
   count(segundo, name = "peticiones") %>%
-  complete(segundo = seq(min(segundo), max(segundo), by = "1 sec"), fill = list(peticiones = 0))
+  complete(segundo = seq(min(segundo), max(segundo), by = "1 sec"), 
+           fill = list(peticiones = 0))
 
 traffic_ts <- ts(df_ts$peticiones, frequency = 1)
 
-
-# --- [4] Visualización y Guardado Automático ---
-
-# A. Serie por Segundo
-p1 <- autoplot(traffic_ts) + 
-  labs(title = "Tráfico por Segundo", subtitle = "Serie Original", y = "Peticiones", x = "Tiempo") +
-  theme_minimal()
-print(p1) # Muestra en R
-ggsave(file.path(path_output, "01_serie_segundo.png"), p1)
-
-# B. Serie por Minuto
+# Agregación por Minuto
 df_minuto <- df_ts %>%
   mutate(minuto = floor_date(segundo, "minute")) %>%
   group_by(minuto) %>%
-  summarise(peticiones = sum(peticiones))
-# Crear el objeto ts con frecuencia de 60 (ciclo horario)
+  summarise(peticiones = sum(peticiones), .groups = 'drop')
+
 traffic_min_ts <- ts(df_minuto$peticiones, frequency = 60)
 
-p2 <- ggplot(df_minuto, aes(x = minuto, y = peticiones)) +
-  geom_line(color = "#2c3e50") +
-  labs(title = "Tráfico por Minuto", x = "Tiempo", y = "Total") +
-  theme_light()
-print(p2) # Muestra en R
-ggsave(file.path(path_output, "02_serie_minuto.png"), p2)
-
-# C. Serie por Hora
+# Agregación por Hora
 df_hora <- df_ts %>%
   mutate(hora = floor_date(segundo, "hour")) %>%
   group_by(hora) %>%
-  summarise(peticiones = sum(peticiones))
+  summarise(peticiones = sum(peticiones), .groups = 'drop')
 
-p3 <- ggplot(df_hora, aes(x = hora, y = peticiones)) +
-  geom_line(color = "#e67e22", size = 1) +  # Color naranja para diferenciar
-  geom_point(color = "#d35400") +           # Puntos para resaltar los picos horarios
-  labs(title = "Tráfico Agregado por Hora", 
-       subtitle = paste("Desde", min(df_hora$hora), "hasta", max(df_hora$hora)),
-       x = "Tiempo (Horas)", 
-       y = "Total de Peticiones") +
+# --- [5] Visualización de Resultados ---
+
+# 01. Serie por Segundo
+p1 <- autoplot(traffic_ts) + 
+  labs(title = "01. Tráfico de Red por Segundo", subtitle = "Serie temporal original", 
+       y = "Peticiones", x = "Tiempo (Segundos)") +
   theme_minimal()
+ggsave(file.path(path_output, "01_serie_segundo.png"), p1, width = 10, height = 6)
 
-print(p3) # Muestra en R
-ggsave(file.path(path_output, "03_serie_hora.png"), p3)
+# 02. Serie por Minuto
+p2 <- ggplot(df_minuto, aes(x = minuto, y = peticiones)) +
+  geom_line(color = "#2c3e50") +
+  labs(title = "02. Tráfico de Red por Minuto", x = "Tiempo", y = "Total Peticiones") +
+  theme_light()
+ggsave(file.path(path_output, "02_serie_minuto.png"), p2, width = 10, height = 6)
 
-# D. Diagnóstico ACF/PACF
-# Segundo
-ggtsdisplay(traffic_ts, main = "Diagnóstico Temporal por segundo")
-png(file.path(path_output, "04_diagnostico_seg_acf_pacf.png"), width = 1000, height = 800)
-ggtsdisplay(traffic_ts, main = "Diagnóstico Temporal: Serie, ACF y PACF")
+# 03. Serie por Hora
+p3 <- ggplot(df_hora, aes(x = hora, y = peticiones)) +
+  geom_line(color = "#e67e22", size = 1) + 
+  geom_point(color = "#d35400") +
+  labs(title = "03. Tráfico Agregado por Hora", 
+       subtitle = paste("Rango:", min(df_hora$hora), "-", max(df_hora$hora)),
+       x = "Tiempo (Horas)", y = "Total de Peticiones") +
+  theme_minimal()
+ggsave(file.path(path_output, "03_serie_hora.png"), p3, width = 10, height = 6)
+
+# 04. Diagnóstico ACF/PACF (Segundo)
+png(file.path(path_output, "04_diagnostico_seg_acf_pacf.png"), width = 1000, height = 800, res = 120)
+ggtsdisplay(traffic_ts, main = "04. Diagnóstico Temporal (Segundo)")
 dev.off()
 
-# Minuto
-ggtsdisplay(traffic_min_ts, main = "Diagnóstico Temporal por minuto")
-png(file.path(path_output, "05_diagnostico_min_acf_pacf.png"), width = 1000, height = 800)
-ggtsdisplay(traffic_min_ts, main = "Diagnóstico Temporal: Serie, ACF y PACF")
+# 05. Diagnóstico ACF/PACF (Minuto)
+png(file.path(path_output, "05_diagnostico_min_acf_pacf.png"), width = 1000, height = 800, res = 120)
+ggtsdisplay(traffic_min_ts, main = "05. Diagnóstico Temporal (Minuto)")
 dev.off()
 
-# Objetos de Series Temporales
-traffic_diff_min   <- diff(traffic_min_ts) # Diferenciación sugerida para estacionariedad
-ggtsdisplay(traffic_diff_min, main = "Serie por Minuto con Diferenciación (d=1)")
-png(file.path(path_output, "06_diagnostico_diff_min.png"), width = 1000, height = 800)
-ggtsdisplay(traffic_diff_min, main = "Serie por Minuto con Diferenciación (d=1)")
+# 06. Diferenciación (Estacionariedad)
+traffic_diff_min <- diff(traffic_min_ts)
+png(file.path(path_output, "06_diagnostico_diff_min.png"), width = 1000, height = 800, res = 120)
+ggtsdisplay(traffic_diff_min, main = "06. Serie por Minuto con Diferenciación (d=1)")
 dev.off()
 
-# F. Boxplot Outliers
-p4 <- ggplot(df_ts, aes(y = peticiones)) +
-  geom_boxplot(fill = "orange", alpha = 0.5) + coord_flip() +
-  labs(title = "Outliers Detectados") + theme_minimal()
-print(p4) # Muestra en R
-ggsave(file.path(path_output, "07_boxplot.png"), p4)
+# 07. Boxplot de Outliers
+p4 <- ggplot(df_ts, aes(x = "", y = peticiones)) +
+  geom_boxplot(fill = "#3498db", alpha = 0.6, outlier.color = "red") + 
+  coord_flip() +
+  labs(title = "07. Identificación de Outliers", subtitle = "Distribución de peticiones por segundo",
+       x = "", y = "Peticiones") + 
+  theme_minimal()
+ggsave(file.path(path_output, "07_boxplot.png"), p4, width = 10, height = 4)
 
-# --- [5] Pruebas Estadísticas ---
-# Segundo
-test_results_seg <- list(
-  adf = tseries::adf.test(traffic_ts),
-  kpss = tseries::kpss.test(traffic_ts)
+# --- [6] Pruebas Estadísticas y Exportación ---
+
+test_results <- list(
+  segundo = list(adf = adf.test(traffic_ts), kpss = kpss.test(traffic_ts)),
+  minuto  = list(adf = adf.test(traffic_min_ts), kpss = kpss.test(traffic_min_ts))
 )
 
-# Minuto
-test_results_min <- list(
-  adf = tseries::adf.test(traffic_min_ts),
-  kpss = tseries::kpss.test(traffic_min_ts)
-)
-
-# Mostrar en consola de R explícitamente
-# Segundo
-print(test_results_seg$adf)
-print(test_results_seg$kpss)
-
-# Segundo
-print(test_results_min$adf)
-print(test_results_min$kpss)
-
-# --- Guardar en archivo TXT ---
-# Creamos una lista maestra para guardar todo de una vez
-resultados_totales <- list(
-  segundos = test_results_seg,
-  minutos = test_results_min
-)
-
+# Guardar resultados en texto
 sink(file.path(path_output, "test_estacionariedad.txt"))
-print(resultados_totales)
+cat("========================================\n")
+cat("PRUEBAS DE ESTACIONARIEDAD\n")
+cat("========================================\n\n")
+print(test_results)
 sink()
 
+# --- [7] Análisis de Medias Móviles ---
+# Suavización simple para identificar tendencia
+df_ts <- df_ts %>%
+  mutate(ma_5 = as.numeric(stats::filter(peticiones, rep(1/5, 5), sides = 1)))
 
-
-# 5. Análisis de Medias Móviles (Suavización k=5)
-v_ma <- stats::filter(traffic_ts, sides = 1, rep(1/5, 5))
+p5 <- ggplot(df_ts, aes(x = segundo)) +
+  geom_line(aes(y = peticiones), alpha = 0.3) +
+  geom_line(aes(y = ma_5), color = "red", size = 1) +
+  labs(title = "08. Suavizado de la Serie (Media Móvil k=5)", 
+       subtitle = "Rojo: Tendencia suavizada | Gris: Original",
+       x = "Tiempo", y = "Peticiones") +
+  theme_minimal()
+ggsave(file.path(path_output, "08_suavizado_ma.png"), p5, width = 10, height = 6)
 
 
 # ==============================================================================
