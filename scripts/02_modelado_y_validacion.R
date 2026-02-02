@@ -102,10 +102,9 @@ setwd(path_base)
 # 2. Preparar el mensaje del commit
 # Usamos shQuote para que los espacios y caracteres especiales no rompan el comando
 fecha_ejecucion <- format(Sys.time(), "%Y-%m-%d %H:%M:%S")
-mensaje_texto <- paste0("feat (modelos): ", fecha_ejecucion, " | implementar pipeline de modelado predictivo y validación de residuales.\n - Adición de modelos Holt-Winters, Auto-ARIMA y SARIMA.
-- Automatización de exportación de métricas (RMSE, MAE, MAPE).
-- Generación de gráficos de diagnóstico de residuales y comparativa final.
-- Mejora de robustez con validación de entorno.")
+mensaje_texto <- paste0("feat (modelos): ", fecha_ejecucion, " | implementar pipeline end-to-end de series temporales.\n - docs: actualizar README con galería de resultados y descripción de logs
+- feat: añadir validación competitiva de modelos (ARIMA vs HW vs SARIMA)
+- perf: optimizar lectura de logs filtrando columnas innecesarias")
 comando_commit <- paste0('git commit -m ', shQuote(mensaje_texto))
 
 # 3. Ejecutar Pipeline de Git
