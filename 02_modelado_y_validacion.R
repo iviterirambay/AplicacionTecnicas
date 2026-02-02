@@ -1,77 +1,93 @@
 # ==============================================================================
 # SCRIPT: 02_modelado_y_validacion.R 
 # PROYECTO: Análisis de Logs de Red
-# DESCRIPCIÓN: Ajuste y validación de modelos (SE, ARMA, ARIMA, SARIMA)
+# DESCRIPCIÓN: Selección del mejor modelo (SE, ARIMA, SARIMA)
 # ==============================================================================
 
-# --- [1] Preparación de Datos ---
-# Usaremos la serie por minuto 'traffic_min_ts' del script anterior
-
-# Definir ventana de entrenamiento (80%) y prueba (20%)
+# --- [1] Preparación y Partición de Datos ---
+# Asegúrate de que 'traffic_min_ts' esté cargado del script anterior
 n <- length(traffic_min_ts)
 n_train <- floor(n * 0.8)
 train_ts <- subset(traffic_min_ts, end = n_train)
 test_ts  <- subset(traffic_min_ts, start = n_train + 1)
 
-# Función para extraer métricas de error
+# Función para extraer métricas de error (Basado en Accuracy de forecast)
 get_metrics <- function(model_forecast, actual, model_name) {
   acc <- accuracy(model_forecast, actual)
   data.frame(
     Modelo = model_name,
     RMSE = acc[2, "RMSE"],
     MAE = acc[2, "MAE"],
-    MAPE = acc[2, "MAPE"]
+    MAPE = acc[2, "MAPE"],
+    AIC = ifelse(is.null(model_forecast$model$aic), NA, model_forecast$model$aic)
   )
 }
 
 # --- [2] Modelo 1: Suavización Exponencial (Holt-Winters) ---
-# Intentamos Holt-Winters. Si no tiene estacionalidad clara, usamos solo tendencia.
-fit_hw <- HoltWinters(train_ts, gamma = FALSE) # gamma=FALSE si no hay estacionalidad fija
+# Ajustamos con tendencia (gamma=FALSE para no estacional)
+fit_hw <- HoltWinters(train_ts, gamma = FALSE) 
 fc_hw  <- forecast(fit_hw, h = length(test_ts))
 
-# --- [3] Modelo 2: ARMA / ARIMA (Manual vs Automático) ---
-# Basado en tus scripts de clase, usamos auto.arima para encontrar el mejor ajuste
-fit_auto_arima <- auto.arima(train_ts, stepwise = FALSE, approximation = FALSE)
-fc_arima <- forecast(fit_auto_arima, h = length(test_ts))
+# --- [3] Modelo 2: Auto-ARIMA ---
+# Buscamos el mejor (p,d,q)
+fit_arima <- auto.arima(train_ts, stepwise = FALSE, approximation = FALSE)
+fc_arima  <- forecast(fit_arima, h = length(test_ts))
 
-# --- [4] Modelo 3: SARIMA ---
-# Si detectamos estacionalidad (ej. frecuencia 60 para minutos en una hora)
-fit_sarima <- stl(train_ts, s.window = "periodic") %>% forecast(method = "arima", h = length(test_ts))
+# --- [4] Modelo 3: SARIMA (vía STL) ---
+# Corrección del error previo: guardamos directamente como 'fc_sarima'
+fc_sarima <- stl(train_ts, s.window = "periodic") %>% 
+  forecast(method = "arima", h = length(test_ts))
 
-# --- [5] Validación de Supuestos (Residuales) ---
-# Tal como en 'ARIMA desempleo Bolivia.R', validamos el mejor modelo
-best_model <- fit_auto_arima
-
-png(file.path(path_output, "09_diagnostico_residuales.png"), width = 1000, height = 800, res = 120)
-checkresiduals(best_model)
-dev.off()
-
-# Test de Normalidad de residuales
-shapiro_res <- shapiro.test(residuals(best_model))
-
-# --- [6] Comparación de Modelos ---
+# --- [5] Comparación y Selección del "Campeón" ---
 metrics_hw    <- get_metrics(fc_hw, test_ts, "Holt-Winters")
 metrics_arima <- get_metrics(fc_arima, test_ts, "Auto-ARIMA")
 metrics_sarima <- get_metrics(fc_sarima, test_ts, "SARIMA (STL)")
 
-tabla_comparativa <- rbind(metrics_hw, metrics_arima, metrics_sarima)
-write.csv(tabla_comparativa, file.path(path_output, "comparacion_modelos.csv"), row.names = FALSE)
+tabla_comparativa <- rbind(metrics_hw, metrics_arima, metrics_sarima) %>%
+  arrange(RMSE) # El mejor modelo tendrá el RMSE más bajo
 
-# --- [7] Visualización Final del Ajuste ---
+# Guardar tabla de resultados
+write.csv(tabla_comparativa, file.path(path_output, "09_comparacion_modelos.csv"), row.names = FALSE)
+
+# Identificar el mejor modelo
+mejor_modelo_nombre <- tabla_comparativa$Modelo[1]
+fc_mejor <- if(mejor_modelo_nombre == "Auto-ARIMA") fc_arima else 
+  if(mejor_modelo_nombre == "Holt-Winters") fc_hw else fc_sarima
+
+# --- [6] Validación de Supuestos del Mejor Modelo ---
+# Tal como en 'SARIMA_VENTAS_LICOR.R', validamos residuales
+png(file.path(path_output, "10_diagnostico_mejor_modelo.png"), width = 1000, height = 800, res = 120)
+checkresiduals(fc_mejor)
+dev.off()
+
+# Test de Normalidad (Shapiro-Wilk)
+residuos <- residuals(fc_mejor)
+shapiro_res <- shapiro.test(residuos)
+
+# --- [7] Visualización Final: Predicción vs Realidad ---
 p_final <- autoplot(train_ts) +
-  autolayer(fc_arima, series = "ARIMA Forecast", PI = FALSE) +
+  autolayer(fc_mejor, series = paste("Predicción:", mejor_modelo_nombre), PI = TRUE, alpha = 0.2) +
   autolayer(test_ts, series = "Valor Real", color = "black") +
-  labs(title = "Comparativa: Predicción vs Realidad",
-       subtitle = paste("Mejor Modelo:", fit_auto_arima$method),
-       y = "Peticiones", x = "Tiempo") +
-  theme_minimal()
+  labs(title = "Validación Final del Modelo de Tráfico",
+       subtitle = paste("Ganador:", mejor_modelo_nombre, "| RMSE:", round(tabla_comparativa$RMSE[1], 2)),
+       y = "Peticiones", x = "Tiempo (Minutos)") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
 
-ggsave(file.path(path_output, "10_comparativa_final.png"), p_final, width = 10, height = 6)
+ggsave(file.path(path_output, "11_validacion_final.png"), p_final, width = 10, height = 6)
 
-# Imprimir resumen en consola
-cat("\n--- RESULTADOS DE VALIDACIÓN ---\n")
+# --- [8] Informe de Resultados en Consola ---
+cat("\n================================================\n")
+cat("RESUMEN DE VALIDACIÓN DE MODELOS\n")
+cat("================================================\n")
 print(tabla_comparativa)
-cat("\nTest de Normalidad Residuales (P-Value):", shapiro_res$p.value)
+cat("\nEl mejor modelo seleccionado es:", mejor_modelo_nombre, "\n")
+cat("P-value Test de Normalidad (Shapiro):", shapiro_res$p.value, "\n")
+if(shapiro_res$p.value > 0.05) {
+  cat("Conclusión: Los residuales siguen una distribución normal.\n")
+} else {
+  cat("Conclusión: Los residuales NO son normales (se sugiere revisar outliers).\n")
+}
 
 # ==============================================================================
 # Sincronización Automática con GitHub
