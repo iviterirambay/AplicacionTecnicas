@@ -1,0 +1,42 @@
+========================================
+PRUEBAS DE ESTACIONARIEDAD
+========================================
+
+$segundo
+$segundo$adf
+
+	Augmented Dickey-Fuller Test
+
+data:  traffic_ts
+Dickey-Fuller = -26.223, Lag order = 48, p-value = 0.01
+alternative hypothesis: stationary
+
+
+$segundo$kpss
+
+	KPSS Test for Level Stationarity
+
+data:  traffic_ts
+KPSS Level = 8.4941, Truncation lag parameter = 23, p-value = 0.01
+
+
+
+$minuto
+$minuto$adf
+
+	Augmented Dickey-Fuller Test
+
+data:  traffic_min_ts
+Dickey-Fuller = -9.8543, Lag order = 12, p-value = 0.01
+alternative hypothesis: stationary
+
+
+$minuto$kpss
+
+	KPSS Test for Level Stationarity
+
+data:  traffic_min_ts
+KPSS Level = 1.4142, Truncation lag parameter = 8, p-value = 0.01
+
+
+
