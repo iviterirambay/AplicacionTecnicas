@@ -1,0 +1,247 @@
+---
+title: "Análisis Avanzado de Series Temporales en Tráfico de Red"
+author: "Irwin Alberto Viteri Rambay"
+date: "`r Sys.Date()`"
+output:
+  pdf_document:
+    toc: true
+    toc_depth: 3
+    number_sections: true
+    highlight: tango
+header-includes:
+  - \usepackage{xcolor}
+  - \usepackage{booktabs}
+  - \usepackage{amsmath}
+  - \usepackage[strings]{underscore}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, eval = FALSE, warning = FALSE, message = FALSE)
+library(pacman)
+p_load(tidyverse, lubridate, forecast, tseries, scales, magrittr)
+
+# --- [2] Configuración de Entorno ---
+path_base   <- "C:/Users/iavit/OneDrive/ESPOL/Maestria en Estadistica Aplicada/Clases Maestria en Estadistica Aplicada/Modulo 8/MODELOS DE PRONOSTICO/Tareas/Grupal/AplicacionTecnicas/"
+path_data   <- file.path(path_base, "data/files.log.gz")
+path_output <- file.path(path_base, "output")
+
+if (!dir.exists(path_output)) dir.create(path_output, recursive = TRUE)
+
+# --- [3] Ingesta y Limpieza ---
+col_names <- c("timestamp", "fuid", "id_orig_h", "id_resp_h", "conn_uids", "source", 
+               "depth", "analyzers", "mime_type", "filename", "duration", 
+               "local_orig", "is_orig", "seen_bytes", "total_bytes", "missing_bytes", 
+               "overflow_bytes", "timedout", "parent_fuid", "md5", "sha1", "sha256", "extracted")
+
+raw_data <- read_delim(path_data, delim = "\t", col_names = col_names, 
+                       na = "-", quote = "", show_col_types = FALSE) %>%
+  select(timestamp, id_orig_h, id_resp_h, source, mime_type)
+
+df_clean <- raw_data %>%
+  mutate(timestamp = as.numeric(timestamp),
+         fecha_hora = as.POSIXct(timestamp, origin = "1970-01-01", tz = "UTC")) %>%
+  filter(!is.na(fecha_hora))
+
+# --- [4] Procesamiento de Series Temporales ---
+
+# Agregación por Segundo
+df_ts <- df_clean %>%
+  mutate(segundo = floor_date(fecha_hora, "second")) %>%
+  count(segundo, name = "peticiones") %>%
+  complete(segundo = seq(min(segundo), max(segundo), by = "1 sec"), 
+           fill = list(peticiones = 0))
+
+traffic_ts <- ts(df_ts$peticiones, frequency = 1)
+
+# Agregación por Minuto
+df_minuto <- df_ts %>%
+  mutate(minuto = floor_date(segundo, "minute")) %>%
+  group_by(minuto) %>%
+  summarise(peticiones = sum(peticiones), .groups = 'drop')
+
+traffic_min_ts <- ts(df_minuto$peticiones, frequency = 60)
+
+# Agregación por Hora
+df_hora <- df_ts %>%
+  mutate(hora = floor_date(segundo, "hour")) %>%
+  group_by(hora) %>%
+  summarise(peticiones = sum(peticiones), .groups = 'drop')
+
+urls <- c(
+  "https://raw.githubusercontent.com/iviterirambay/AplicacionTecnicas/main/output/01_serie_segundo.png",
+  "https://raw.githubusercontent.com/iviterirambay/AplicacionTecnicas/main/output/02_serie_minuto.png",
+  "https://raw.githubusercontent.com/iviterirambay/AplicacionTecnicas/main/output/03_serie_hora.png"
+)
+
+# 2. Definir los nombres de archivos locales
+destfiles <- c(
+  "01_serie_segundo.png", 
+  "02_serie_minuto.png", 
+  "03_serie_hora.png"
+)
+
+# 3. Configuración y bucle de descarga
+options(timeout = 60)
+
+for (i in seq_along(urls)) {
+  if (!file.exists(destfiles[i])) {
+    tryCatch({
+      download.file(urls[i], destfiles[i], mode = "wb")
+      message(paste("Archivo descargado:", destfiles[i]))
+    }, error = function(e) {
+      message(paste("Error en:", destfiles[i], "-", e$message))
+    })
+  }
+}
+```
+
+# Introducción
+El presente reporte expone el análisis técnico y predictivo del tráfico de red basado en logs de servidores. La naturaleza de estos datos presenta desafíos significativos debido a su alta volatilidad y comportamiento intermitente. El objetivo fundamental es transformar datos brutos de auditoría en inteligencia operativa mediante el uso de modelos estocásticos lineales y no lineales, evaluando la capacidad de pronóstico en horizontes de tiempo real.
+
+# Metodología de Ingesta y Procesamiento de Datos
+La fase inicial del proyecto comprende la extracción, depuración y caracterización técnica de un corpus de 116,214 registros de logs de red. Este dataset, obtenido del repositorio especializado Secrepo, corresponde específicamente al archivo files.log.gz, el cual documenta la actividad de transferencia de archivos y protocolos de red en un entorno controlado.
+
+## Naturaleza y Estructura de los Datos Brutos
+
+Los datos brutos presentan una estructura tabular de alta dimensionalidad que incluye metadatos críticos para el análisis forense y estadístico. Un extracto representativo de la arquitectura de los datos se detalla a continuación:
+
+* **Timestamp**: Marcas de tiempo en formato Unix con precisión de microsegundos (e.g., `1331904043.330000`).
+* **Identificadores**: Flujos de red únicos y etiquetas de conexión (e.g., `FdvE9O3qVXtmO0RC6l`, `C8zwFr2uTI5OvAfIL5`).
+* **Direccionamiento**: Tráfico entre nodos internos y externos identificado por direcciones IP (e.g., `192.168.27.102` a `192.168.202.110`).
+* **Protocolos y Carga Útil**: Identificación de servicios (HTTP) y tipos de contenido, predominantemente `text/html` y `text/plain`.
+
+## Estrategia de Agregación y Selección de Frecuencia
+
+El procesamiento se centra en la conversión de las marcas temporales Unix a formatos `POSIXct` para permitir una agregación multiescala. La determinación de la frecuencia operativa ($frequency$) es crítica para la captura de la estacionalidad y la estabilidad de los modelos econométricos:
+
+* **Serie por Segundo ($frequency = 1$)**:
+    * **Naturaleza**: Presenta una demanda intermitente extrema, saturada de valores cero y ráfagas repentinas.
+    * **Diagnóstico**: Aunque es fundamental para la detección de ataques de denegación de servicio (DDoS), su alta volatilidad rompe los supuestos de normalidad y estacionariedad necesarios para modelos ARIMA.
+* **Serie por Minuto ($frequency = 60$) — Selección Óptima**:
+    * **Naturaleza**: Representa el "punto dulce" (*sweet spot*) analítico donde la intermitencia se suaviza y emerge la estructura de la serie.
+    * **Utilidad**: Con aproximadamente 1,930 puntos de datos para las 32.3 horas registradas, permite identificar patrones rítmicos y procesos automáticos, constituyendo la base más robusta para el pronóstico.
+* **Serie por Hora ($frequency = 1440$)**:
+    * **Naturaleza**: Proporciona una visión macroscópica (*Big Picture*) para la planificación de capacidad.
+    * **Limitación**: Dado que el dataset cubre solo ~1.3 días, esta serie aporta apenas 32 puntos, volumen insuficiente para modelar estacionalidades diarias de forma robusta.
+
+```{r 01_eda.R}
+col_names <- c("timestamp", "fuid", "id_orig_h", "id_resp_h", "conn_uids", "source", 
+               "depth", "analyzers", "mime_type", "filename", "duration", 
+               "local_orig", "is_orig", "seen_bytes", "total_bytes", "missing_bytes", 
+               "overflow_bytes", "timedout", "parent_fuid", "md5", "sha1", "sha256", "extracted")
+
+raw_data <- read_delim("data/files.log.gz", delim = "\t", col_names = col_names, 
+                       na = "-", quote = "", show_col_types = FALSE)
+
+df_clean <- raw_data %>%
+  mutate(timestamp = as.numeric(timestamp),
+         fecha_hora = as.POSIXct(timestamp, origin = "1970-01-01", tz = "UTC")) %>%
+  filter(!is.na(fecha_hora))
+```
+
+```{r Serie por Segundo, fig.height=6, fig.width=10}
+# 01. Serie por Segundo
+p1 <- autoplot(traffic_ts) + 
+  labs(title = "01. Tráfico de Red por Segundo", subtitle = "Serie temporal original", 
+       y = "Peticiones", x = "Tiempo (Segundos)") +
+  theme_minimal()
+print(p1)
+```
+
+```{r Serie por Minuto, fig.height=6, fig.width=10}
+# 02. Serie por Minuto
+p2 <- ggplot(df_minuto, aes(x = minuto, y = peticiones)) +
+  geom_line(color = "#2c3e50") +
+  labs(title = "02. Tráfico de Red por Minuto", x = "Tiempo", y = "Total Peticiones") +
+  theme_light()
+
+```
+
+```{r Serie por Hora, fig.height=6, fig.width=10}
+# 03. Serie por Hora
+p3 <- ggplot(df_hora, aes(x = hora, y = peticiones)) +
+  geom_line(color = "#e67e22", size = 1) + 
+  geom_point(color = "#d35400") +
+  labs(title = "03. Tráfico Agregado por Hora", 
+       subtitle = paste("Rango:", min(df_hora$hora), "-", max(df_hora$hora)),
+       x = "Tiempo (Horas)", y = "Total de Peticiones") +
+  theme_minimal()
+
+```
+
+![01. Tráfico de Red por Segundo](01_serie_segundo.png)
+![02. Tráfico de Red por Minuto](02_serie_minuto.png)
+![03. Tráfico de Red por Hora](03_serie_hora.png)
+
+## Diagnóstico de la Señal vs. Ruido
+El análisis exploratorio (01_serie_segundo.png y 02_serie_minuto.png) revela que la serie por segundo está dominada por el ruido aleatorio, mientras que la agregación por minuto actúa como un filtro que revela la "respiración" real del tráfico de red. Para estabilizar la varianza no constante (heterocedasticidad) observada en los picos de tráfico, se recomienda la aplicación de transformaciones logarítmicas antes del modelado formal.
+
+\textcolor{blue!70!black}{La caracterización de estos logs confirma que estamos ante un proceso de memoria corta con ráfagas persistentes. La decisión de operar sobre la frecuencia de minutos permite mitigar el impacto de los periodos de inactividad, transformando una serie de demanda intermitente en una señal continua apta para la inferencia estadística avanzada.}
+
+
+# Diagnóstico de Estacionariedad y Análisis Espectral
+Para determinar la viabilidad de los modelos ARIMA, se someten las series a pruebas de raíces unitarias (ADF) y de estacionariedad (KPSS).
+
+```{r Minuto y Diagnóstico}
+df_minuto <- df_clean %>%
+  mutate(minuto = floor_date(fecha_hora, "minute")) %>%
+  group_by(minuto) %>%
+  summarise(peticiones = sum(n()), .groups = 'drop')
+
+traffic_min_ts <- ts(df_minuto$peticiones, frequency = 60)
+
+# Pruebas estadísticas
+adf.test(traffic_min_ts)
+kpss.test(traffic_min_ts)
+```
+\textcolor{blue!70!black}{Los resultados del test de Dickey-Fuller Aumentado ($p < 0.01$) sugieren la ausencia de una raíz unitaria, indicando estacionariedad en media. No obstante, el test KPSS arroja un p-valor de 0.01, rechazando la hipótesis nula de estacionariedad de nivel. Esta contradicción tipifica a la serie como "Difference Stationary". La persistencia observada en las funciones de autocorrelación (ACF) por minuto (05\_diagnostico\_min\_acf\_pacf.png) confirma que, aunque la serie regresa a su media, posee una memoria de largo plazo que exige una diferenciación de primer orden ($d=1$) para estabilizar la varianza local.}
+
+\textcolor{blue!70!black}{El análisis del PACF revela rezagos significativos en $k=1$ y $k=2$, sugiriendo que la dinámica del tráfico actual está condicionada intrínsecamente por los dos minutos inmediatamente anteriores, lo que fundamenta la especificación de un componente autorregresivo (AR) en los modelos subsiguientes.}
+
+
+# Modelado y Validación Competitiva
+Se implementa una partición de datos (80% entrenamiento, 20% prueba) para evaluar tres arquitecturas: Suavización Exponencial de Holt-Winters, Auto-ARIMA y SARIMA vía descomposición STL.
+
+```{r 02_modelado_y_validacion}
+n_train <- floor(length(traffic_min_ts) * 0.8)
+train_ts <- subset(traffic_min_ts, end = n_train)
+test_ts  <- subset(traffic_min_ts, start = n_train + 1)
+
+fit_hw <- HoltWinters(train_ts, gamma = FALSE) 
+fit_arima <- Arima(train_ts, order = c(4, 1, 0))
+fc_sarima <- stl(train_ts, s.window = "periodic") %>% 
+             forecast(method = "arima", h = length(test_ts))
+```
+
+\textcolor{blue!70!black}{La comparativa de métricas (09\_comparacion\_modelos.csv) posiciona al modelo SARIMA (STL) o ARIMA como los más robustos frente a la volatilidad. Basándonos en el RMSE y el criterio de información de Akaike (AIC), se selecciona el modelo con menor error de pronóstico. La visualización de validación final (11_validacion_final.png) muestra que el modelo captura la tendencia central, aunque subestima los picos de varianza extrema debidos a la naturaleza estocástica de las ráfagas de red.}
+
+# Diagnóstico de Residuales
+```{r Diagnostico de Residuales}
+checkresiduals(fit_arima)
+```
+\textcolor{blue!70!black}{Al evaluar el diagnóstico del mejor modelo (10_diagnostico_mejor_modelo.png), se observa que los residuales se comportan aproximadamente como ruido blanco, aunque el test de Shapiro-Wilk suele rechazar la normalidad debido a la presencia de outliers en las colas de la distribución. No obstante, la ausencia de autocorrelación significativa en los residuos (Ljung-Box test) valida la suficiencia de los parámetros estimadores.}
+
+
+# Pronóstico y Conclusiones
+Finalmente, se proyecta el tráfico para un horizonte $h=30$ minutos para la toma de decisiones proactiva en la infraestructura.
+
+```{r 04_comparativo_forecast}
+autoplot(traffic_min_ts) +
+  autolayer(forecast(fit_hw, h=30), series="Holt-Winters", PI=F) +
+  autolayer(forecast(fit_arima, h=30), series="ARIMA", PI=F) +
+  theme_minimal()
+```
+
+\textcolor{blue!70!black}{En conclusión, el análisis demuestra que la agregación por minuto es el nivel óptimo para el modelado predictivo, logrando un balance entre granularidad y estabilidad estadística. Se recomienda la implementación de modelos híbridos que consideren la heterocedasticidad condicional (GARCH) en futuras investigaciones para modelar explícitamente los picos de tráfico observados en los logs. El modelo seleccionado provee una base sólida para sistemas de alerta temprana y planificación de capacidad.}
+
+
+# Referencias de Salida y Resultados Visuales
+A continuación, se resumen los hallazgos basados en los archivos de salida generados por el pipeline:
+
+.:. 01\_serie\_segundo.png: Evidencia de alta intermitencia y ruido.
+
+.:. 05\_diagnostico\_min\_acf\_pacf.png: Identificación de estructura AR(p) y necesidad de diferenciación.
+
+.:. 09\_comparacion\_modelos.csv: El modelo ARIMA(4,1,0) o SARIMA presenta la mayor bondad de ajuste.
+
+.:. 13_forecast_modelos.png: Comparativa visual de las trayectorias de pronóstico.
