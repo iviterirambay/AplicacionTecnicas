@@ -34,3 +34,10 @@ Se validó que los residuales se comporten como **Ruido Blanco** (test de Ljung-
 | Resultado Final | Diagnóstico de Residuales |
 | :--- | :--- |
 | ![Final](output/11_validacion_final.png) | ![Residuales](output/10_diagnostico_mejor_modelo.png) |
+
+He actualizado la documentación para reflejar la inclusión del análisis comparativo:
+| Resultado Final | Diagnóstico de Residuales |
+| :--- | :--- |
+| Modelado: Se integró la comparación entre Suavización Exponencial y SARIMA, incluyendo ARIMA (No Estacional) como línea base para validar la complejidad del modelo. | Guía de Ejecución: Se implementó el uso de la librería pacman para la gestión automatizada de dependencias y asegurar la reproducibilidad del código. |
+| Selección del Modelo: Se añadió la sección ""Selección del Modelo Campeón"" fundamentada en la métrica RMSE para una decisión técnica objetiva. | Validación Técnica: El diagnóstico ahora permite determinar si el aporte de la estacionalidad en SARIMA justifica su uso frente a métodos más sencillos. |
+| Tabulación de Resultados: Se incluyó una tabla comparativa de RMSE entre los tres métodos evaluados (Suavización, ARIMA y SARIMA). | Consistencia: La estructura garantiza que la elección del modelo final dependa directamente del comportamiento de los residuales y el error cuadrático. |

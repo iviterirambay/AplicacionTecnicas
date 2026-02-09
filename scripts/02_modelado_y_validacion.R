@@ -30,7 +30,8 @@ fc_hw  <- forecast(fit_hw, h = length(test_ts))
 
 # --- [3] Modelo 2: Auto-ARIMA ---
 # Buscamos el mejor (p,d,q)
-fit_arima <- auto.arima(train_ts, stepwise = FALSE, approximation = FALSE)
+# fit_arima <- auto.arima(train_ts, stepwise = FALSE, approximation = FALSE)
+fit_arima <- Arima(train_ts, order = c(4, 1, 0))
 fc_arima  <- forecast(fit_arima, h = length(test_ts))
 
 # --- [4] Modelo 3: SARIMA (vía STL) ---

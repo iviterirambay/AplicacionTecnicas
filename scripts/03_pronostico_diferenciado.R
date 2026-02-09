@@ -65,7 +65,7 @@ residuos <- residuals(fc_mejor)
 shapiro_res <- shapiro.test(residuos)
 
 # --- [7] Visualización Final: Predicción vs Realidad ---
-p_final <- autoplot(train_ts) +
+p_6 <- autoplot(train_ts) +
   autolayer(fc_mejor, series = paste("Predicción:", mejor_modelo_nombre_diferenciado), PI = TRUE, alpha = 0.2) +
   autolayer(test_ts, series = "Valor Real", color = "black") +
   labs(title = "Validación Final del Modelo de Tráfico",
@@ -73,7 +73,7 @@ p_final <- autoplot(train_ts) +
        y = "Peticiones", x = "Tiempo (Minutos)") +
   theme_minimal()
 
-ggsave(file.path(path_output, "12_validacion_final_diferenciado.png"), p_final, width = 10, height = 6)
+ggsave(file.path(path_output, "12_validacion_final_diferenciado.png"), p_6, width = 10, height = 6)
 
 # --- [8] Informe de Resultados en Consola ---
 cat("\n================================================\n")
