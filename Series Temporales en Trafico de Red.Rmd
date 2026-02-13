@@ -13,10 +13,12 @@ header-includes:
   - \usepackage{booktabs}
   - \usepackage{amsmath}
   - \usepackage[strings]{underscore}
+  - \usepackage{hyperref}
+  - \hypersetup{colorlinks=true, linkcolor=green, urlcolor=green}
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, eval = FALSE, warning = FALSE, message = FALSE)
+knitr::opts_chunk$set(echo = TRUE, results="markup", warning=FALSE, message=FALSE, comment=NA)
 library(pacman)
 p_load(tidyverse, lubridate, forecast, tseries, scales, magrittr)
 
@@ -94,9 +96,13 @@ for (i in seq_along(urls)) {
   }
 }
 ```
-
+\newpage
 # Introducción
 El presente reporte expone el análisis técnico y predictivo del tráfico de red basado en logs de servidores. La naturaleza de estos datos presenta desafíos significativos debido a su alta volatilidad y comportamiento intermitente. El objetivo fundamental es transformar datos brutos de auditoría en inteligencia operativa mediante el uso de modelos estocásticos lineales y no lineales, evaluando la capacidad de pronóstico en horizontes de tiempo real.
+
+Para una revisión exhaustiva de la metodología aplicada, el código completo y los scripts de preprocesamiento se encuentran disponibles en el repositorio de GitHub: [iviterirambay/AplicacionTecnicas](https://github.com/iviterirambay/AplicacionTecnicas).
+
+Asimismo, los datos de origen fueron obtenidos del repositorio público Secrepo, específicamente del dataset de la MACCDC 2012, disponible en el siguiente enlace directo: [files.log.gz](https://www.secrepo.com/).
 
 # Metodología de Ingesta y Procesamiento de Datos
 La fase inicial del proyecto comprende la extracción, depuración y caracterización técnica de un corpus de 116,214 registros de logs de red. Este dataset, obtenido del repositorio especializado Secrepo, corresponde específicamente al archivo files.log.gz, el cual documenta la actividad de transferencia de archivos y protocolos de red en un entorno controlado.
@@ -154,7 +160,7 @@ p2 <- ggplot(df_minuto, aes(x = minuto, y = peticiones)) +
   geom_line(color = "#2c3e50") +
   labs(title = "02. Tráfico de Red por Minuto", x = "Tiempo", y = "Total Peticiones") +
   theme_light()
-
+print(p2)
 ```
 
 ```{r Serie por Hora, fig.height=6, fig.width=10}
@@ -166,15 +172,12 @@ p3 <- ggplot(df_hora, aes(x = hora, y = peticiones)) +
        subtitle = paste("Rango:", min(df_hora$hora), "-", max(df_hora$hora)),
        x = "Tiempo (Horas)", y = "Total de Peticiones") +
   theme_minimal()
-
+print(p3)
 ```
 
-![01. Tráfico de Red por Segundo](01_serie_segundo.png)
-![02. Tráfico de Red por Minuto](02_serie_minuto.png)
-![03. Tráfico de Red por Hora](03_serie_hora.png)
 
 ## Diagnóstico de la Señal vs. Ruido
-El análisis exploratorio (01_serie_segundo.png y 02_serie_minuto.png) revela que la serie por segundo está dominada por el ruido aleatorio, mientras que la agregación por minuto actúa como un filtro que revela la "respiración" real del tráfico de red. Para estabilizar la varianza no constante (heterocedasticidad) observada en los picos de tráfico, se recomienda la aplicación de transformaciones logarítmicas antes del modelado formal.
+El análisis exploratorio (01. Tráfico de Red por Segundo y 02. Tráfico de Red por Minuto) revela que la serie por segundo está dominada por el ruido aleatorio, mientras que la agregación por minuto actúa como un filtro que revela la "respiración" real del tráfico de red. Para estabilizar la varianza no constante (heterocedasticidad) observada en los picos de tráfico, se recomienda la aplicación de transformaciones logarítmicas antes del modelado formal.
 
 \textcolor{blue!70!black}{La caracterización de estos logs confirma que estamos ante un proceso de memoria corta con ráfagas persistentes. La decisión de operar sobre la frecuencia de minutos permite mitigar el impacto de los periodos de inactividad, transformando una serie de demanda intermitente en una señal continua apta para la inferencia estadística avanzada.}
 
@@ -182,7 +185,11 @@ El análisis exploratorio (01_serie_segundo.png y 02_serie_minuto.png) revela qu
 # Diagnóstico de Estacionariedad y Análisis Espectral
 Para determinar la viabilidad de los modelos ARIMA, se someten las series a pruebas de raíces unitarias (ADF) y de estacionariedad (KPSS).
 
-```{r Minuto y Diagnóstico}
+```{r Minuto-y-Diagnostico, message=FALSE, warning=FALSE}
+library(lubridate)
+library(tseries)
+
+# 1. Procesamiento de datos
 df_minuto <- df_clean %>%
   mutate(minuto = floor_date(fecha_hora, "minute")) %>%
   group_by(minuto) %>%
@@ -190,8 +197,11 @@ df_minuto <- df_clean %>%
 
 traffic_min_ts <- ts(df_minuto$peticiones, frequency = 60)
 
-# Pruebas estadísticas
+# 2. Pruebas estadísticas (se imprimirán automáticamente en el PDF)
+cat("### Prueba de Augmented Dickey-Fuller (ADF)\n")
 adf.test(traffic_min_ts)
+
+cat("\n### Prueba de Kwiatkowski-Phillips-Schmidt-Shin (KPSS)\n")
 kpss.test(traffic_min_ts)
 ```
 \textcolor{blue!70!black}{Los resultados del test de Dickey-Fuller Aumentado ($p < 0.01$) sugieren la ausencia de una raíz unitaria, indicando estacionariedad en media. No obstante, el test KPSS arroja un p-valor de 0.01, rechazando la hipótesis nula de estacionariedad de nivel. Esta contradicción tipifica a la serie como "Difference Stationary". La persistencia observada en las funciones de autocorrelación (ACF) por minuto (05\_diagnostico\_min\_acf\_pacf.png) confirma que, aunque la serie regresa a su media, posee una memoria de largo plazo que exige una diferenciación de primer orden ($d=1$) para estabilizar la varianza local.}
@@ -203,6 +213,9 @@ kpss.test(traffic_min_ts)
 Se implementa una partición de datos (80% entrenamiento, 20% prueba) para evaluar tres arquitecturas: Suavización Exponencial de Holt-Winters, Auto-ARIMA y SARIMA vía descomposición STL.
 
 ```{r 02_modelado_y_validacion}
+library(ggplot2)
+library(forecast)
+
 n_train <- floor(length(traffic_min_ts) * 0.8)
 train_ts <- subset(traffic_min_ts, end = n_train)
 test_ts  <- subset(traffic_min_ts, start = n_train + 1)
@@ -211,6 +224,32 @@ fit_hw <- HoltWinters(train_ts, gamma = FALSE)
 fit_arima <- Arima(train_ts, order = c(4, 1, 0))
 fc_sarima <- stl(train_ts, s.window = "periodic") %>% 
              forecast(method = "arima", h = length(test_ts))
+
+h_test <- length(test_ts)
+
+pred_hw    <- forecast(fit_hw, h = h_test)
+pred_arima <- forecast(fit_arima, h = h_test)
+
+# Graficar la comparativa
+autoplot(train_ts) +
+  autolayer(test_ts, series = "Datos Reales (Test)", color = "grey70") +
+  autolayer(pred_hw, series = "Holt-Winters", PI = FALSE) +
+  autolayer(pred_arima, series = "ARIMA", PI = FALSE) +
+  autolayer(fc_sarima, series = "STL+ARIMA", PI = FALSE) +
+  labs(title = "Comparativa de Modelos de Tráfico",
+       x = "Tiempo",
+       y = "Peticiones",
+       colour = "Modelos") +
+  theme_minimal()
+
+# Tabla de precisión para comparar numéricamente
+accuracy_table <- rbind(
+  HoltWinters = accuracy(pred_hw, test_ts)[2,],
+  ARIMA = accuracy(pred_arima, test_ts)[2,],
+  SARIMA_STL = accuracy(fc_sarima, test_ts)[2,]
+)
+knitr::kable(accuracy_table, caption = "Métricas de Error en el Set de Prueba")
+
 ```
 
 \textcolor{blue!70!black}{La comparativa de métricas (09\_comparacion\_modelos.csv) posiciona al modelo SARIMA (STL) o ARIMA como los más robustos frente a la volatilidad. Basándonos en el RMSE y el criterio de información de Akaike (AIC), se selecciona el modelo con menor error de pronóstico. La visualización de validación final (11_validacion_final.png) muestra que el modelo captura la tendencia central, aunque subestima los picos de varianza extrema debidos a la naturaleza estocástica de las ráfagas de red.}
@@ -245,3 +284,24 @@ A continuación, se resumen los hallazgos basados en los archivos de salida gene
 .:. 09\_comparacion\_modelos.csv: El modelo ARIMA(4,1,0) o SARIMA presenta la mayor bondad de ajuste.
 
 .:. 13_forecast_modelos.png: Comparativa visual de las trayectorias de pronóstico.
+
+\renewcommand{\refname}{8   Referencias}
+
+\begin{thebibliography}{99}
+
+\bibitem{bisgaard2011} 
+\hangindent=2em Bisgaard, S., \& Kulahci, M. (2011). \textit{Time Series Analysis and Forecasting by Example}. John Wiley \& Sons.
+
+\bibitem{box1976} 
+\hangindent=2em Box, G. E. P., \& Jenkins, G. M. (1976). \textit{Time Series Analysis: Forecasting and Control} (Revised ed.). Holden-Day.
+
+\bibitem{kutner2005} 
+\hangindent=2em Kutner, M. H., Nachtsheim, C. J., Neter, J., \& Li, W. (2005). \textit{Applied Linear Statistical Models} (5th ed.). McGraw-Hill Irwin.
+
+\bibitem{montgomery2012} 
+\hangindent=2em Montgomery, D. C., Peck, E. A., \& Vining, G. G. (2012). \textit{Introduction to Linear Regression Analysis} (5th ed.). John Wiley \& Sons.
+
+\bibitem{shumway2011} 
+\hangindent=2em Shumway, R. H., \& Stoffer, D. S. (2011). \textit{Time Series Analysis and Its Applications: With R Examples} (3rd ed.). Springer.
+
+\end{thebibliography}

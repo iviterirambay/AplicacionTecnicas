@@ -1,6 +1,6 @@
-# 📈 Análisis de Series de Tiempo: Logs de Tráfico de Red
+# Análisis de Series de Tiempo: Logs de Tráfico de Red
 
-## 📖 Descripción del Dataset
+## Descripción del Dataset
 El sistema procesa logs crudos de red con estructura TSV (Tab-Separated Values). Cada entrada representa un evento de conexión con la siguiente anatomía:
 * **Timestamp:** Época Unix (ej. `1331904056.66`).
 * **Identificadores:** `fuid`, `id_orig_h` (IP Origen), `id_resp_h` (IP Destino).
